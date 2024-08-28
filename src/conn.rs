@@ -10,9 +10,7 @@ use futures::task::{Context, Poll};
 use futures::{SinkExt, StreamExt};
 
 use chromiumoxide_cdp::cdp::browser_protocol::target::SessionId;
-use chromiumoxide_types::{
-    CallId, CdpJsonEventMessage, EventMessage, Message, MethodCall, MethodId,
-};
+use chromiumoxide_types::{CallId, EventMessage, Message, MethodCall, MethodId};
 
 use crate::error::CdpError;
 use crate::error::Result;
@@ -142,7 +140,7 @@ impl<T: EventMessage + Unpin> Stream for Connection<T> {
         // read from the ws
         match ready!(pin.ws.poll_next_unpin(cx)) {
             Some(Ok(WsMessage::Text(text))) => {
-                let ready = match serde_json::from_str::<Message<T>>(&text) {
+                let ready = match text.parse::<Message<T>>() {
                     Ok(msg) => {
                         tracing::trace!("Received {:?}", msg);
                         Ok(msg)
@@ -150,12 +148,7 @@ impl<T: EventMessage + Unpin> Stream for Connection<T> {
                     Err(err) => {
                         tracing::debug!(target: "chromiumoxide::conn::raw_ws::parse_errors", msg = text, "Failed to parse raw WS message");
                         tracing::error!("Failed to deserialize WS response {}", err);
-                        let interim: serde_json::Value = serde_json::from_str(&text)?;
-                        let msg = serde_json::from_value::<Message<T>>(interim.clone());
-                        match msg {
-                            Ok(m) => Ok(m),
-                            Err(_e) => Err(err.into()),
-                        }
+                        Err(err.into())
                     }
                 };
 
